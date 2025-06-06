@@ -228,4 +228,170 @@ display(t5_small_results)
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ### T5-base
+# MAGIC The T5-baes model 220 million parameters.
 
+# COMMAND ----------
+
+t5_base_summaries = summarize_with_t5(
+    model_checkpoint="t5-base", articles=sample["article"]
+)
+compute_rouge_score(t5_base_summaries, reference_summaries)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### GPT-2
+# MAGIC The GPT-2 model is a generative text model that was trained in a self-supervised fashion. 
+
+# COMMAND ----------
+
+from transformers import GPT2LMHeadModel, GPT2Tokenizer
+
+def summarize_with_gpt2(model_checkpoint: str, articles: list, batch_size: int = 8) -> list:
+  """
+  Funtion to summarize articles with GPT2 to handle these complications:
+  - Append "TL:DR" ot the end of the input to get GPT2 to generate a summary
+  - GPT2 uses a max token length of 1024. We use a shorter 512 limit
+  """
+  if torch.cuda.is_available():
+    device = "cuda:0"
+  else:
+    device = "cpu"
+
+  tokenizer = GPT2Tokenizer.from_pretrained(
+    model_checkpoint, padding_side="left", cache_dir="/dbfs/tmp/llm_cache"
+  )
+
+  tokenizer.add_special_tokens({"pad_token": tokenizer.eos_token})
+  model = GPT2LMHeadModel.from_pretrained(
+    model_checkpoint,
+    pad_token_id=tokenizer.eos_token_id,
+    cache_dir="/dbfs/tmp/llm_cache"
+  ).to(device)
+
+  def perform_inference(batch: list) -> list:
+    tmp_inputs = tokenizer(
+      batch, max_length=500, return_tensors="pt", padding=True, truncation=True
+    )
+
+    tmp_inputs_decoded = tokenizer.batch_decode(
+      tmp_inputs.input_ids, skip_special_tokens=True
+    )
+
+    inputs = tokenizer(
+      [article + " TL:DR" for article in tmp_inputs_decoded],
+      max_length=512,
+      return_tensors="pt",
+      padding=True
+    )
+
+    summary_ids = model.generate(
+      inputs.input_ids.to(device),
+      attention_mask=inputs.attention_mask.to(device),
+      max_length=512 + 32,
+      num_beams=2,
+      min_length=0
+    )
+
+    return tokenizer.batch_decode(summary_ids, skip_special_tokens=True)
+
+  decoded_summaries = []
+  for batch in batch_generator(articles, batch_size=batch_size):
+
+    decoded_summaries += perform_inference(batch)
+
+    # batch clean up
+    torch.cuda.empty_cache()
+    gc.collect()
+
+  # post-process decoded summaries
+  summaries = [
+    summary[summary.find("TL;DR") + len("TL;DR: ") :]
+    for summary in decoded_summaries
+  ]
+
+  # cleanup
+  del tokenizer
+  del model
+  torch.cuda.empty_cache()
+  gc.collect()
+
+  return summaries
+
+# COMMAND ----------
+
+gpt2_summaries = summarize_with_gpt2(
+    model_checkpoint="gpt2", articles=sample["article"]
+)
+
+compute_rouge_score(gpt2_summaries, reference_summaries)
+
+# COMMAND ----------
+
+gpt2_results = compute_rouge_per_row(
+    generated_summaries=gpt2_summaries, reference_summaries=reference_summaries
+)
+display(gpt2_results)
+
+# COMMAND ----------
+
+def compare_models(model_results: dict) -> pd.DataFrame:
+    agg_results = []
+
+    for r in models_results:
+        model_results = model_results[r].drop(
+            labels=["generated", "reference"], axis=1
+        )
+        agg_metrics = [r]
+        agg_metrics[1:] = model_results.mean(axis=0)
+        agg_results.append(agg_metrics)
+
+    return pd.DataFrame(
+        agg_results, columns=["model", "rouge1", "rouge2", "rougeL", "rougeLsum"]
+    )
+
+# COMMAND ----------
+
+display(
+    compare_models(
+        {
+            "t5-small": t5_small_results,
+            "t5-base": t5_base_results,
+            "gpt2": gpt2_results
+        }
+    )
+)
+
+# COMMAND ----------
+
+def compare_models_summaries(models_summaries: dict) -> pd.DataFrame:
+    """
+    Aggregates results from `models_summaries` and returns a dataframe
+    """
+    comparison_df = None
+    for model_name in models_summaries:
+        summaries_df = models_summaries[model_name]
+        if comparison_df is None:
+            comparison_df = summaries_df[["generated"]].rename(
+                {"generated": model_name}, axis=1
+            )
+        else:
+            comparison_df[model_name] = comparison_df.join(
+                summaries_df[["generated"]].rename(
+                    {"generated": model_name}, axis=1
+            )
+    return comparison_df
+
+# COMMAND ----------
+
+display(
+    compare_model_summaries(
+        {
+            "t5-small": t5_small_summaries,
+            "t5-base": t5_base_summaries,
+            "gpt2": gpt2_summaries,
+        }
+    )
+)
