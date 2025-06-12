@@ -247,3 +247,36 @@ prod_model_udf = mlflow.pyfunc.spark_udf(
     env_manager="local",
     result_type="string"
 )
+
+# COMMAND ----------
+
+batch_inference_results_df = prod_data_df.withColumn("generated_summary", prod_model_udf("document"))
+display(batch_inference_results_df)
+
+# COMMAND ----------
+
+prod_data_summaries_table_name = f"{catalog_name}.{schema_name}.batch_inference"
+batch_inference_results_df.write.mode("append").saveAsTable(prod_data_summaries_table_name)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Batch Inference with `ai_query()`
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC CREATE OR REPLACE TABLE ai_query_inference AS (
+# MAGIC   SELECT
+# MAGIC   id,
+# MAGIC   ai_query(
+# MAGIC     "databricks-dbrx-instruct",
+# MAGIC     CONCAT("Based on the following document, provide a summary in less than 100 words. Document", document)
+# MAGIC   ) as generated_summary
+# MAGIC   FROM frantzpaul_tech.batch_xsum.prod_data LIMIT 10
+# MAGIC )
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT * FROM ai_query_inference
