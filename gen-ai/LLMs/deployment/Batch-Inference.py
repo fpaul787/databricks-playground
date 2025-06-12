@@ -191,3 +191,29 @@ mlflow.register_model(
 
 # MAGIC %md
 # MAGIC ## Manage Model Stage
+# MAGIC Set latest model to `champion`
+
+# COMMAND ----------
+
+def get_latest_model_version(model_name):
+    client = MlflowClient()
+    latest_model_version = client.get_latest_versions(model_name, stages=["None"])[0].version
+    return latest_model_version
+
+# COMMAND ----------
+
+# Set @alias
+client = mlflow.tracking.MLflowClient()
+current_model_version = get_latest_model_version(model_name)
+
+
+client.set_registered_model_alias(name=model_name, alias="champion", version=current_model_version)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Create a Production Workflow for Batch Inference
+
+# COMMAND ----------
+
+
