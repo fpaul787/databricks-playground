@@ -216,4 +216,34 @@ client.set_registered_model_alias(name=model_name, alias="champion", version=cur
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ### Single-node Batch Inference
 
+# COMMAND ----------
+
+latest_model = mlflow.pyfunc.load_model(
+  model_uri=f"models:/{model_name}/{current_model_version}"
+)
+
+# COMMAND ----------
+
+from pprint import pprint
+
+prod_data_sample_pdf = prod_data_df.limit(2).toPandas()
+summaries_sample = latest_model.predict(prod_data_sample_pdf['document'])
+[pprint(s+"\n") for s in summaries_sample]
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Multinode Batch Inference
+
+# COMMAND ----------
+
+# Grab `Champion` model
+prod_model_udf = mlflow.pyfunc.spark_udf(
+    spark,
+    model_uri=f"models:/{model_name}@champion",
+    env_manager="local",
+    result_type="string"
+)
