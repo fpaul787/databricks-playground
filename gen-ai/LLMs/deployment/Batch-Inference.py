@@ -146,4 +146,48 @@ with mlflow.start_run() as run:
 
 # COMMAND ----------
 
+# Grab most recent run
+experiment_id = mlflow.get_experiment_by_name(experiment_name).experiment_id
+runs = mlflow.search_runs(experiment_id)
+last_run_id = runs.sort_values('start_time', ascending=False).iloc[0].run_id
 
+
+# Construct model URI based on run_id
+model_uri = f"runs:/{last_run_id}/{model_artifact_path}"
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Load Model Back as a Pipeline
+
+# COMMAND ----------
+
+loaded_summarizer = mlflow.pyfun.load_model(model_uri=model_uri)
+loaded_summarizer.predict(text_to_summarize)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Register the Model to Unity Catalog
+# MAGIC * A registered modle is a named model in the registry (catalog.schema.model_name)
+# MAGIC     - A model version
+# MAGIC         - An @alias, unique free text alias describing which stage of deployment (`challenger` (development), `champion` (production), `baseline` or `archived`)
+
+# COMMAND ----------
+
+from mlflow import MlflowClient
+
+# Define model name in the Model Registry
+model_name = f"{catalog_name}.{schema_name}.summarizer"
+
+# Point to Unity-catalog
+mlflow.set_registry_uri("databricks-uc")
+mlflow.register_model(
+    model_uri=model_uri,
+    name=model_name
+)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Manage Model Stage
