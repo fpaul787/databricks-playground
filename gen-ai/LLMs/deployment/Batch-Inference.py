@@ -83,4 +83,67 @@ print(f"Original Document: {text_to_summarize}")
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC # Model Development and Registering
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Track LLM Development with MLflow
+
+# COMMAND ----------
+
+import mlflow
+from mlflow.models import infer_signature
+from mlflow.transformers import generate_signature_output
+
+output = generate_signature_output(summarizer, text_to_summarize)
+signature = infer_signature(text_to_summarize, output)
+print(f"Signature:\n{signature}")
+
+# Set experiment path
+experiment_name = f"/Users/frantz@frantzpaul.tech/GenAi-As-Batch-Demo"
+mlflow.set_experiment(experiment_name)
+model_artifact_path = "summarizer" # Name of folder of serialized model
+
+with mlflow.start_run() as run:
+    # LOG PARAMS
+    mlflow.log_params(
+        {
+            "hf_model_name": hf_model_name,
+            "min_length": min_length,
+            "max_length": max_length,
+            "truncation": truncation,
+            "do_sample": do_sample
+        }
+    )
+
+    # -------
+    # LOG MODEL
+    inference_config = {
+        "min_length": min_length,
+        "max_length": max_length,
+        "truncation": truncation,
+        "do_sample": do_sample
+    }
+
+    model_info = mlflow.transformers.log_model(
+        transformers_model=summarizer,
+        artifact_path=model_artifact_path,
+        task="summarization",
+        inference_config=inference_config,
+        signature=signature,
+        input_example="This is an example of a long news article which this pipeline can summarize for you"
+    )
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Query the MLflow Tracking server
 # MAGIC
+# MAGIC MLflow Tracking API:
+# MAGIC
+# MAGIC MLflow Tracking UI:
+
+# COMMAND ----------
+
+
